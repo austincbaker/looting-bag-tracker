@@ -14,7 +14,7 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.example.ExamplePluginTest'
+def pluginMainClass = 'com.lootingbagtracker.LootingBagTrackerPluginTest'
 
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
@@ -27,12 +27,23 @@ dependencies {
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
 }
 
-group = 'com.example'
+group = 'com.lootingbagtracker'
 version = '1.0-SNAPSHOT'
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_11
+	targetCompatibility = JavaVersion.VERSION_11
+}
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
-	options.release.set(11)
+}
+
+tasks.register('deploy', Copy) {
+	dependsOn jar
+	from jar.archiveFile
+	into '/mnt/c/Users/austi/.runelite/plugins'
+	description = 'Copies the plugin jar to the Windows RuneLite plugins directory'
 }
 
 tasks.register('run', JavaExec) {
