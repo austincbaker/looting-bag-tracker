@@ -46,14 +46,22 @@ public class LootingBagTrackerPlugin extends Plugin
 	@Inject
 	private EventBus eventBus;
 
-	private Multiset<Integer> bagSnapshot;
+	private Multiset<Integer> lastKnownBagContents = HashMultiset.create();
 	private String pendingSourceName;
 	private int snapshotTicksRemaining;
 
 	@Override
+	protected void startUp()
+	{
+		lastKnownBagContents = getBagContents();
+	}
+
+	@Override
 	protected void shutDown()
 	{
-		reset();
+		pendingSourceName = null;
+		snapshotTicksRemaining = 0;
+		lastKnownBagContents = HashMultiset.create();
 	}
 
 	@Subscribe
@@ -78,8 +86,7 @@ public class LootingBagTrackerPlugin extends Plugin
 		}
 
 		final String sourceName = Text.removeTags(event.getMenuTarget());
-		log.debug("Snapshotting looting bag for: {}", sourceName);
-		bagSnapshot = getBagContents();
+		log.debug("Pending looting bag loot from: {}", sourceName);
 		pendingSourceName = sourceName;
 		snapshotTicksRemaining = SNAPSHOT_TIMEOUT_TICKS;
 	}
@@ -87,30 +94,35 @@ public class LootingBagTrackerPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
-		if (bagSnapshot == null || event.getContainerId() != LOOTING_BAG_CONTAINER)
+		if (event.getContainerId() != LOOTING_BAG_CONTAINER)
 		{
 			return;
 		}
 
 		final Multiset<Integer> currentBag = getBagContents();
-		final List<ItemStack> gained = Multisets.difference(currentBag, bagSnapshot).entrySet().stream()
-			.filter(e -> e.getElement() > 0)
-			.map(e -> new ItemStack(e.getElement(), e.getCount()))
-			.collect(Collectors.toList());
 
-		if (gained.isEmpty())
+		if (pendingSourceName != null)
 		{
-			return;
+			final List<ItemStack> gained = Multisets.difference(currentBag, lastKnownBagContents).entrySet().stream()
+				.filter(e -> e.getElement() > 0)
+				.map(e -> new ItemStack(e.getElement(), e.getCount()))
+				.collect(Collectors.toList());
+
+			if (!gained.isEmpty())
+			{
+				log.debug("Looting bag received {} item(s) from: {}", gained.size(), pendingSourceName);
+				eventBus.post(PluginLootReceived.builder()
+					.source(this)
+					.name(pendingSourceName)
+					.type(LootRecordType.EVENT)
+					.items(gained)
+					.build());
+				pendingSourceName = null;
+				snapshotTicksRemaining = 0;
+			}
 		}
 
-		log.debug("Looting bag received {} item(s) from: {}", gained.size(), pendingSourceName);
-		eventBus.post(PluginLootReceived.builder()
-			.source(this)
-			.name(pendingSourceName)
-			.type(LootRecordType.EVENT)
-			.items(gained)
-			.build());
-		reset();
+		lastKnownBagContents = currentBag;
 	}
 
 	@Subscribe
@@ -118,15 +130,9 @@ public class LootingBagTrackerPlugin extends Plugin
 	{
 		if (snapshotTicksRemaining > 0 && --snapshotTicksRemaining == 0)
 		{
-			reset();
+			log.debug("Looting bag pending interaction timed out");
+			pendingSourceName = null;
 		}
-	}
-
-	private void reset()
-	{
-		bagSnapshot = null;
-		pendingSourceName = null;
-		snapshotTicksRemaining = 0;
 	}
 
 	private Multiset<Integer> getBagContents()
