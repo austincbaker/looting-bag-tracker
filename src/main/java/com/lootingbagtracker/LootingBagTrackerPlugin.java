@@ -38,7 +38,7 @@ public class LootingBagTrackerPlugin extends Plugin
 	// net.runelite.api.gameval.ItemID
 	private static final int ITEM_LOOTING_BAG_OPEN = 22586;
 
-	private static final int SNAPSHOT_TIMEOUT_TICKS = 16;
+	private static final int SNAPSHOT_TIMEOUT_TICKS = 24;
 
 	@Inject
 	private Client client;
@@ -95,18 +95,12 @@ public class LootingBagTrackerPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
-		log.info("[LootingBagTracker] Container changed: id={}, hasPendingSnapshot={}", event.getContainerId(), bagSnapshot != null);
-
-		if (bagSnapshot == null)
+		if (bagSnapshot == null || event.getContainerId() != LOOTING_BAG_CONTAINER)
 		{
 			return;
 		}
 
-		if (event.getContainerId() != LOOTING_BAG_CONTAINER)
-		{
-			log.info("[LootingBagTracker] Container {} is not looting bag ({}) - skipping", event.getContainerId(), LOOTING_BAG_CONTAINER);
-			return;
-		}
+		log.info("[LootingBagTracker] Looting bag changed while snapshot active");
 
 		final Multiset<Integer> currentBag = getBagContents();
 		final List<ItemStack> gained = Multisets.difference(currentBag, bagSnapshot).entrySet().stream()
