@@ -44,7 +44,8 @@ tasks.withType(JavaCompile).configureEach {
 tasks.register('deploy', Copy) {
 	dependsOn jar
 	from jar.archiveFile
-	into project.findProperty('sideloadedPluginsDir') ?: "${System.getProperty('user.home')}/.runelite/sideloaded-plugins"
+	def defaultDir = "${System.getProperty('user.home')}/.runelite/sideloaded-plugins"
+	into project.findProperty('sideloadedPluginsDir') ?: defaultDir
 	description = 'Copies the plugin jar to the RuneLite sideloaded-plugins directory'
 }
 
