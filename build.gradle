@@ -42,7 +42,7 @@ tasks.withType(JavaCompile).configureEach {
 tasks.register('deploy', Copy) {
 	dependsOn jar
 	from jar.archiveFile
-	into '/mnt/c/Users/austi/.runelite/plugins'
+	into '/mnt/c/Users/austi/.runelite/sideloaded-plugins'
 	description = 'Copies the plugin jar to the Windows RuneLite plugins directory'
 }
 

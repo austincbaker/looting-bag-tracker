@@ -38,7 +38,7 @@ public class LootingBagTrackerPlugin extends Plugin
 	// net.runelite.api.gameval.ItemID
 	private static final int ITEM_LOOTING_BAG_OPEN = 22586;
 
-	private static final int SNAPSHOT_TIMEOUT_TICKS = 5;
+	private static final int SNAPSHOT_TIMEOUT_TICKS = 16;
 
 	@Inject
 	private Client client;
@@ -64,22 +64,30 @@ public class LootingBagTrackerPlugin extends Plugin
 			return;
 		}
 
-		if (!isObjectOp(event.getMenuAction()))
-		{
-			return;
-		}
-
+		final MenuAction action = event.getMenuAction();
 		final String option = event.getMenuOption();
-		if (!option.equals("Open") && !option.equals("Unlock")
-			&& !option.equals("Search") && !option.equals("Steal")
-			&& !option.equals("Loot"))
+		final String target = event.getMenuTarget();
+		log.info("[LootingBagTracker] Menu clicked: action={} (id={}), option='{}', target='{}'",
+			action, action.getId(), option, target);
+
+		if (!isObjectOp(action))
 		{
+			log.info("[LootingBagTracker] Action {} is not an object op - skipping", action);
 			return;
 		}
 
-		final String sourceName = Text.removeTags(event.getMenuTarget());
-		log.debug("Snapshotting looting bag for: {}", sourceName);
-		bagSnapshot = getBagContents();
+		if (!option.equals("Open") && !option.equals("Unlock")
+			&& !option.equals("Search") && !option.equals("Search for traps")
+			&& !option.equals("Steal") && !option.equals("Loot"))
+		{
+			log.info("[LootingBagTracker] Option '{}' not in tracked list - skipping", option);
+			return;
+		}
+
+		final String sourceName = Text.removeTags(target);
+		final Multiset<Integer> snapshot = getBagContents();
+		log.info("[LootingBagTracker] Snapshotting looting bag for: '{}' - bag has {} item stacks", sourceName, snapshot.elementSet().size());
+		bagSnapshot = snapshot;
 		pendingSourceName = sourceName;
 		snapshotTicksRemaining = SNAPSHOT_TIMEOUT_TICKS;
 	}
@@ -87,8 +95,16 @@ public class LootingBagTrackerPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
-		if (bagSnapshot == null || event.getContainerId() != LOOTING_BAG_CONTAINER)
+		log.info("[LootingBagTracker] Container changed: id={}, hasPendingSnapshot={}", event.getContainerId(), bagSnapshot != null);
+
+		if (bagSnapshot == null)
 		{
+			return;
+		}
+
+		if (event.getContainerId() != LOOTING_BAG_CONTAINER)
+		{
+			log.info("[LootingBagTracker] Container {} is not looting bag ({}) - skipping", event.getContainerId(), LOOTING_BAG_CONTAINER);
 			return;
 		}
 
@@ -98,12 +114,21 @@ public class LootingBagTrackerPlugin extends Plugin
 			.map(e -> new ItemStack(e.getElement(), e.getCount()))
 			.collect(Collectors.toList());
 
+		log.info("[LootingBagTracker] Bag changed while snapshot active - snapshot={} stacks, current={} stacks, gained={} stacks",
+			bagSnapshot.elementSet().size(), currentBag.elementSet().size(), gained.size());
+
 		if (gained.isEmpty())
 		{
+			log.info("[LootingBagTracker] No new items gained in bag - ignoring change");
 			return;
 		}
 
-		log.debug("Looting bag received {} items from: {}", gained.size(), pendingSourceName);
+		for (ItemStack item : gained)
+		{
+			log.info("[LootingBagTracker] Gained item: id={}, qty={}", item.getId(), item.getQuantity());
+		}
+
+		log.info("[LootingBagTracker] Posting PluginLootReceived for '{}' with {} item stacks", pendingSourceName, gained.size());
 		eventBus.post(PluginLootReceived.builder()
 			.source(this)
 			.name(pendingSourceName)
@@ -116,9 +141,15 @@ public class LootingBagTrackerPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick tick)
 	{
-		if (snapshotTicksRemaining > 0 && --snapshotTicksRemaining == 0)
+		if (snapshotTicksRemaining > 0)
 		{
-			reset();
+			snapshotTicksRemaining--;
+			log.info("[LootingBagTracker] Snapshot timeout tick: {} ticks remaining", snapshotTicksRemaining);
+			if (snapshotTicksRemaining == 0)
+			{
+				log.info("[LootingBagTracker] Snapshot timed out - resetting");
+				reset();
+			}
 		}
 	}
 
